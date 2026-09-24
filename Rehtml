@@ -1,0 +1,1155 @@
+
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <base target="_top">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>แบบฟอร์มรายการขอเบิก</title>
+
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: "Prompt", sans-serif;
+        }
+
+        :root {
+            --primary: #2563eb;
+            --secondary: #4f46e5;
+            --text: #172033;
+            --border: #dfe5ee;
+            --danger: #dc2626;
+        }
+
+        body {
+            min-height: 100vh;
+            background:
+                radial-gradient(circle at 5% 5%, rgba(37,99,235,.12), transparent 28%),
+                radial-gradient(circle at 95% 90%, rgba(79,70,229,.10), transparent 30%),
+                linear-gradient(180deg, #f8fbff 0%, #f3f6fc 100%);
+            color: var(--text);
+            padding: 38px 18px 50px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 820px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 28px;
+        }
+
+        .header-icon {
+            width: 72px;
+            height: 72px;
+            margin: 0 auto 16px;
+            border-radius: 22px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 31px;
+            color: #fff;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            box-shadow: 0 16px 35px rgba(37,99,235,.22);
+        }
+
+        .header h1 {
+            font-size: clamp(26px, 4vw, 32px);
+            line-height: 1.35;
+            font-weight: 650;
+            color: var(--text);
+        }
+
+        .header p {
+            margin-top: 8px;
+            font-size: 13px;
+            line-height: 1.8;
+            color: #8490a3;
+        }
+
+        .form-card {
+            position: relative;
+            overflow: hidden;
+            background: rgba(255,255,255,.97);
+            border: 1px solid rgba(221,228,239,.9);
+            border-radius: 26px;
+            padding: 38px 40px;
+            box-shadow: 0 26px 60px rgba(32,53,89,.10);
+        }
+
+        .form-card::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 5px;
+            background: linear-gradient(90deg, var(--primary), var(--secondary));
+        }
+
+        .message {
+            display: none;
+            margin-bottom: 22px;
+            padding: 14px 16px;
+            border-radius: 12px;
+            font-size: 13px;
+            line-height: 1.7;
+        }
+
+        .message.success {
+            display: block;
+            color: #047857;
+            background: #ecfdf5;
+            border: 1px solid #a7f3d0;
+        }
+
+        .message.error {
+            display: block;
+            color: #be123c;
+            background: #fff1f2;
+            border: 1px solid #fecdd3;
+        }
+
+        .form-group {
+            position: relative;
+            margin-bottom: 25px;
+        }
+
+        label {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            margin-bottom: 9px;
+            color: #273244;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .required {
+            color: #ef4444;
+            margin-left: 1px;
+        }
+
+        input,
+        select,
+        textarea {
+            width: 100%;
+            border: 1.5px solid var(--border);
+            border-radius: 14px;
+            outline: none;
+            background: #fff;
+            color: #243044;
+            font-size: 14px;
+            font-weight: 400;
+            transition: .2s ease;
+        }
+
+        input,
+        select {
+            height: 58px;
+            padding: 0 17px;
+        }
+
+        textarea {
+            min-height: 130px;
+            padding: 16px 17px;
+            line-height: 1.7;
+            resize: vertical;
+        }
+
+        input::placeholder,
+        textarea::placeholder {
+            color: #a4adbb;
+        }
+
+        input:hover,
+        select:hover,
+        textarea:hover {
+            border-color: #c7d2e3;
+            background: #fcfdff;
+        }
+
+        input:focus,
+        select:focus,
+        textarea:focus {
+            border-color: var(--primary);
+            background: #fff;
+            box-shadow: 0 0 0 4px rgba(37,99,235,.10);
+        }
+
+        select {
+            cursor: pointer;
+        }
+
+        #productList {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 11px;
+        }
+
+        /* รายการสินค้า */
+        .product-row {
+            display: grid;
+            grid-template-columns: 44px minmax(0,1fr) 90px 105px 52px;
+            gap: 10px;
+            align-items: center;
+            padding: 9px;
+            border: 1px solid #edf1f7;
+            background: #fbfcff;
+            border-radius: 15px;
+            transition: .2s ease;
+        }
+
+        .product-row:hover {
+            border-color: #d9e3f3;
+            background: #f9fbff;
+            box-shadow: 0 6px 16px rgba(37,99,235,.05);
+        }
+
+        .product-number {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #eaf2ff, #eef2ff);
+            color: var(--primary);
+            font-size: 13px;
+            font-weight: 700;
+            border: 1px solid #dbe7ff;
+        }
+
+        .size-input {
+            width: 100%;
+            height: 52px;
+            border-radius: 11px;
+            text-align: center;
+            padding: 0 8px;
+            font-weight: 500;
+        }
+
+        .product-input,
+        .quantity-input {
+            height: 52px;
+            border-radius: 11px;
+        }
+
+        .quantity-input {
+            text-align: center;
+            padding: 0 8px;
+        }
+
+        .remove-product-btn {
+            width: 52px;
+            height: 52px;
+            border: 0;
+            border-radius: 11px;
+            background: #fff1f2;
+            color: var(--danger);
+            font-size: 24px;
+            line-height: 1;
+            cursor: pointer;
+            transition: .2s ease;
+        }
+
+        .remove-product-btn:hover:not(:disabled) {
+            background: #fee2e2;
+            transform: translateY(-1px);
+        }
+
+        .remove-product-btn:disabled {
+            opacity: .30;
+            cursor: not-allowed;
+        }
+
+        .add-product-btn {
+            width: 100%;
+            height: 52px;
+            margin-top: 12px;
+            border: 1.5px dashed #8fb3ff;
+            border-radius: 13px;
+            background: linear-gradient(180deg, #f4f8ff 0%, #edf4ff 100%);
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 9px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: .2s ease;
+        }
+
+        .add-product-btn:hover {
+            border-color: var(--primary);
+            background: #e8f1ff;
+            transform: translateY(-1px);
+        }
+
+        .plus-icon {
+            width: 27px;
+            height: 27px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--primary);
+            color: #fff;
+            font-size: 20px;
+            line-height: 1;
+            box-shadow: 0 4px 9px rgba(37,99,235,.20);
+        }
+
+        .product-help {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            margin-top: 9px;
+            color: #949eae;
+            font-size: 11px;
+            line-height: 1.6;
+        }
+
+        .product-help::before {
+            content: "ⓘ";
+            color: #6b8dcc;
+            font-size: 12px;
+        }
+
+        .save-button {
+            position: relative;
+            width: 100%;
+            height: 60px;
+            margin-top: 8px;
+            border: 0;
+            border-radius: 14px;
+            background: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%);
+            color: #fff;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: .22s ease;
+            box-shadow: 0 14px 28px rgba(37,99,235,.22);
+        }
+
+        .save-button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 18px 34px rgba(37,99,235,.28);
+        }
+
+        .save-button:disabled {
+            opacity: .65;
+            cursor: wait;
+            box-shadow: none;
+        }
+
+        .footer {
+            margin-top: 22px;
+            text-align: center;
+            color: #a0a8b5;
+            font-size: 11px;
+        }
+
+        @media (max-width: 600px) {
+            body {
+                padding: 22px 12px 35px;
+            }
+
+            .header {
+                margin-bottom: 22px;
+            }
+
+            .header-icon {
+                width: 60px;
+                height: 60px;
+                border-radius: 18px;
+                font-size: 27px;
+            }
+
+            .header h1 {
+                font-size: 24px;
+            }
+
+            .form-card {
+                padding: 28px 18px;
+                border-radius: 21px;
+            }
+
+            .form-group {
+                margin-bottom: 22px;
+            }
+
+            input,
+            select {
+                height: 55px;
+            }
+
+            .product-row {
+                grid-template-columns: 36px minmax(0,1fr) 72px 70px 44px;
+                gap: 7px;
+                padding: 7px;
+            }
+
+            .product-number {
+                width: 36px;
+                height: 42px;
+                border-radius: 10px;
+            }
+
+            .size-input,
+            .product-input,
+            .quantity-input {
+                height: 48px;
+            }
+
+            .remove-product-btn {
+                width: 44px;
+                height: 48px;
+                font-size: 21px;
+            }
+
+            .add-product-btn {
+                height: 50px;
+            }
+
+            .save-button {
+                height: 57px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="container">
+
+    <div class="header">
+        <div class="header-icon">📋</div>
+        <h1>แบบฟอร์มรายการขอเบิก</h1>
+        <p>กรุณากรอกข้อมูลให้ครบถ้วนก่อนบันทึกรายการ</p>
+    </div>
+
+    <div class="form-card">
+
+        <div id="message" class="message"></div>
+
+        <form id="requestForm">
+
+            <!-- เขตโรงงาน -->
+            <div class="form-group">
+                <label>
+                    เขตโรงงาน
+                    <span class="required">*</span>
+                </label>
+
+                <select id="factory" required>
+                    <option value="">-- เลือกเขตโรงงาน --</option>
+                    <option value="โรงงานบางพลี">โรงงานบางพลี</option>
+                    <option value="โรงงานชลบุรี">โรงงานชลบุรี</option>
+                    <option value="โรงงานรังสิต">โรงงานรังสิต</option>
+                </select>
+            </div>
+
+            <!-- หน่วยงาน -->
+            <div class="form-group">
+                <label>
+                    หน่วยงาน
+                    <span class="required">*</span>
+                </label>
+
+                <input
+                    type="text"
+                    id="department"
+                    placeholder="เช่น โรงงานชาร์ป"
+                    required
+                >
+            </div>
+
+            <!-- ชื่อผู้เบิก -->
+            <div class="form-group">
+                <label>
+                    ชื่อผู้เบิก
+                    <span class="required">*</span>
+                </label>
+
+                <input
+                    type="text"
+                    id="requester"
+                    placeholder="กรอกชื่อผู้เบิก"
+                    required
+                >
+            </div>
+
+            <!-- สินค้า -->
+            <div class="form-group">
+
+                <label>
+                    สินค้าที่ขอเบิก
+                    <span class="required">*</span>
+                </label>
+
+                <div id="productList"></div>
+
+                <button
+                    type="button"
+                    class="add-product-btn"
+                    onclick="addProduct()"
+                >
+                    <span class="plus-icon">+</span>
+                    เพิ่มรายการสินค้า
+                </button>
+
+                <div class="product-help">
+                    เลือกสินค้า → เลือกไซส์ → ระบุจำนวน
+                </div>
+
+            </div>
+
+            <!-- หมายเหตุ -->
+            <div class="form-group">
+
+                <label>หมายเหตุ</label>
+
+                <textarea
+                    id="note"
+                    placeholder="กรอกรายละเอียดเพิ่มเติม..."
+                ></textarea>
+
+            </div>
+
+            <!-- บันทึก -->
+            <button
+                type="submit"
+                class="save-button"
+                id="saveButton"
+            >
+                บันทึกรายการขอเบิก
+            </button>
+
+        </form>
+
+    </div>
+
+    <div class="footer">
+        Stock Management System
+    </div>
+
+</div>
+
+<script>
+
+/* =========================================================
+   ELEMENT
+========================================================= */
+
+const form = document.getElementById("requestForm");
+
+const message = document.getElementById("message");
+
+const saveButton = document.getElementById("saveButton");
+
+
+/* =========================================================
+   PRODUCT MASTER
+   ใช้ชื่อสินค้าเป็น value เพื่อให้ saveRequest(data)
+   ฝั่ง .gs เดิมยังทำงานได้เหมือนเดิม
+========================================================= */
+
+const PRODUCT_MASTER = [
+    {
+        code: "UNI-SHORT",
+        name: "เสื้อช็อปแขนสั้น",
+        sizes: ["S", "M", "L", "XL", "2XL", "3XL"]
+    },
+    {
+        code: "UNI-LONG",
+        name: "เสื้อช็อปแขนยาว",
+        sizes: ["S", "M", "L", "XL", "2XL", "3XL"]
+    },
+    {
+        code: "UNI-PANTS",
+        name: "กางเกง",
+        sizes: ["S", "M", "L", "XL", "2XL", "3XL"]
+    },
+    {
+        code: "UNI-SLEEVE",
+        name: "ปลอกแขน",
+        sizes: ["ไม่มีไซซ์"]
+    },
+    {
+        code: "UNI-HAT",
+        name: "หมวก",
+        sizes: ["ไม่มีไซซ์"]
+    }
+];
+
+
+function getProductOptions() {
+
+    return `
+        <option value="">-- เลือกสินค้า --</option>
+        ${PRODUCT_MASTER.map(function(product) {
+            return `
+                <option
+                    value="${product.name}"
+                    data-code="${product.code}"
+                >
+                    ${product.code} - ${product.name}
+                </option>
+            `;
+        }).join("")}
+    `;
+
+}
+
+
+/* =========================================================
+   ADD PRODUCT
+========================================================= */
+
+function addProduct() {
+
+    const productList =
+        document.getElementById("productList");
+
+    const row =
+        document.createElement("div");
+
+    row.className = "product-row";
+
+    row.innerHTML = `
+
+        <div class="product-number"></div>
+
+        <select
+            class="product-input"
+            aria-label="สินค้า"
+            required
+        >
+            ${getProductOptions()}
+        </select>
+
+        <select
+            class="size-input"
+            aria-label="ไซส์หรือขนาดสินค้า"
+            required
+            disabled
+        >
+            <option value="">-- ไซส์ --</option>
+        </select>
+
+        <input
+            type="number"
+            class="quantity-input"
+            min="1"
+            step="1"
+            value="1"
+            inputmode="numeric"
+            placeholder="จำนวน"
+            aria-label="จำนวนสินค้า"
+            required
+        >
+
+        <button
+            type="button"
+            class="remove-product-btn"
+            onclick="removeProduct(this)"
+            title="ลบรายการสินค้า"
+        >×</button>
+
+    `;
+
+    productList.appendChild(row);
+
+    bindProductRow(row);
+
+    updateProductRows();
+
+    const input =
+        row.querySelector(".product-input");
+
+    if (input) {
+        input.focus();
+    }
+
+}
+
+
+/* =========================================================
+   BIND PRODUCT ROW
+========================================================= */
+
+function bindProductRow(row) {
+
+    const productSelect =
+        row.querySelector(".product-input");
+
+    const quantityInput =
+        row.querySelector(".quantity-input");
+
+    if (productSelect) {
+
+        productSelect.addEventListener(
+            "change",
+            function() {
+                syncSizeOptions(row);
+            }
+        );
+
+    }
+
+
+    /*
+     * จำนวน: รับเฉพาะเลขจำนวนเต็มบวก
+     * ป้องกัน e, E, +, -, . ที่ input type=number
+     */
+
+    if (quantityInput) {
+
+        quantityInput.addEventListener(
+            "keydown",
+            function(event) {
+
+                if (
+                    ["e", "E", "+", "-", "."].includes(event.key)
+                ) {
+                    event.preventDefault();
+                }
+
+            }
+        );
+
+        quantityInput.addEventListener(
+            "input",
+            function() {
+
+                const value =
+                    String(quantityInput.value || "");
+
+                if (value === "") {
+                    return;
+                }
+
+                const integerValue =
+                    Math.floor(Number(value));
+
+                if (
+                    !Number.isFinite(integerValue) ||
+                    integerValue < 1
+                ) {
+                    quantityInput.value = 1;
+                    return;
+                }
+
+                quantityInput.value =
+                    String(integerValue);
+
+            }
+        );
+
+    }
+
+}
+
+
+/* =========================================================
+   SYNC SIZE OPTIONS
+========================================================= */
+
+function syncSizeOptions(row) {
+
+    const productSelect =
+        row.querySelector(".product-input");
+
+    const sizeSelect =
+        row.querySelector(".size-input");
+
+    if (!productSelect || !sizeSelect) {
+        return;
+    }
+
+    const product =
+        PRODUCT_MASTER.find(function(item) {
+            return item.name === productSelect.value;
+        });
+
+
+    if (!product) {
+
+        sizeSelect.innerHTML =
+            '<option value="">-- ไซส์ --</option>';
+
+        sizeSelect.disabled = true;
+
+        return;
+    }
+
+
+    sizeSelect.innerHTML =
+        product.sizes
+            .map(function(size) {
+
+                return (
+                    '<option value="' +
+                    size +
+                    '">' +
+                    size +
+                    '</option>'
+                );
+
+            })
+            .join("");
+
+    sizeSelect.disabled = false;
+
+}
+
+
+/* =========================================================
+   REMOVE PRODUCT
+========================================================= */
+
+function removeProduct(button) {
+
+    const rows =
+        document.querySelectorAll(".product-row");
+
+    if (rows.length <= 1) {
+        return;
+    }
+
+    const row =
+        button.closest(".product-row");
+
+    if (row) {
+        row.remove();
+    }
+
+    updateProductRows();
+
+}
+
+
+/* =========================================================
+   UPDATE PRODUCT NUMBER
+========================================================= */
+
+function updateProductRows() {
+
+    const rows =
+        document.querySelectorAll(".product-row");
+
+    rows.forEach(function(row, index) {
+
+        const number =
+            row.querySelector(".product-number");
+
+        if (number) {
+            number.textContent = index + 1;
+        }
+
+        const removeButton =
+            row.querySelector(".remove-product-btn");
+
+        if (removeButton) {
+            removeButton.disabled = rows.length === 1;
+        }
+
+    });
+
+}
+
+
+/* =========================================================
+   GET PRODUCTS
+   รับชื่อสินค้า + จำนวน
+========================================================= */
+
+function getProducts() {
+
+    const rows =
+        document.querySelectorAll(".product-row");
+
+    const products = [];
+
+    rows.forEach(function(row) {
+
+        const sizeInput =
+            row.querySelector(".size-input");
+
+        const nameInput =
+            row.querySelector(".product-input");
+
+        const quantityInput =
+            row.querySelector(".quantity-input");
+
+        const size =
+            sizeInput
+                ? sizeInput.value.trim()
+                : "";
+
+        const name =
+            nameInput
+                ? nameInput.value.trim()
+                : "";
+
+        const quantity =
+            quantityInput
+                ? Number(quantityInput.value)
+                : 0;
+
+        if (name !== "") {
+
+            products.push({
+                size: size,
+                name: name,
+                quantity: quantity
+            });
+
+        }
+
+    });
+
+    return products;
+
+}
+
+
+/* =========================================================
+   VALIDATE PRODUCTS
+========================================================= */
+
+function validateProducts(products) {
+
+    if (products.length === 0) {
+
+        return "กรุณากรอกสินค้าที่ขอเบิกอย่างน้อย 1 รายการ";
+
+    }
+
+    for (let i = 0; i < products.length; i++) {
+
+        const product = products[i];
+
+        if (!product.size) {
+
+            return (
+                "กรุณาเลือกไซส์ในรายการที่ " +
+                (i + 1)
+            );
+
+        }
+
+        if (
+            !Number.isInteger(product.quantity) ||
+            product.quantity < 1
+        ) {
+
+            return (
+                "กรุณาระบุจำนวนสินค้าในรายการที่ " +
+                (i + 1) +
+                " เป็นจำนวนเต็มตั้งแต่ 1 ขึ้นไป"
+            );
+
+        }
+
+    }
+
+    return "";
+
+}
+
+
+/* =========================================================
+   SUBMIT FORM
+========================================================= */
+
+form.addEventListener("submit", function(event) {
+
+    event.preventDefault();
+
+    const products = getProducts();
+
+    const data = {
+
+        factory:
+            document.getElementById("factory").value,
+
+        department:
+            document.getElementById("department").value.trim(),
+
+        requester:
+            document.getElementById("requester").value.trim(),
+
+        products: products,
+
+        note:
+            document.getElementById("note").value.trim()
+
+    };
+
+
+    /* ตรวจสอบโรงงาน */
+    if (!data.factory) {
+
+        showError("กรุณาเลือกโรงงาน");
+
+        return;
+
+    }
+
+
+    /* ตรวจสอบหน่วยงาน */
+    if (!data.department) {
+
+        showError("กรุณากรอกหน่วยงาน");
+
+        return;
+
+    }
+
+
+    /* ตรวจสอบชื่อผู้เบิก */
+    if (!data.requester) {
+
+        showError("กรุณากรอกชื่อผู้เบิก");
+
+        return;
+
+    }
+
+
+    /* ตรวจสอบสินค้าและจำนวน */
+    const productError =
+        validateProducts(products);
+
+    if (productError) {
+
+        showError(productError);
+
+        return;
+
+    }
+
+
+    /* LOADING */
+    saveButton.disabled = true;
+
+    saveButton.textContent = "กำลังบันทึก...";
+
+    message.className = "message";
+
+
+    /* GOOGLE APPS SCRIPT */
+    google.script.run
+
+        .withSuccessHandler(function(result) {
+
+            saveButton.disabled = false;
+
+            saveButton.textContent =
+                "บันทึกรายการขอเบิก";
+
+            if (result && result.success) {
+
+                message.textContent =
+                    result.message;
+
+                message.className =
+                    "message success";
+
+                resetForm();
+
+                window.scrollTo({
+                    top: 0,
+                    behavior: "smooth"
+                });
+
+            } else {
+
+                showError(
+                    result && result.message
+                        ? result.message
+                        : "ไม่สามารถบันทึกข้อมูลได้"
+                );
+
+            }
+
+        })
+
+        .withFailureHandler(function(error) {
+
+            saveButton.disabled = false;
+
+            saveButton.textContent =
+                "บันทึกรายการขอเบิก";
+
+            showError(
+                error && error.message
+                    ? error.message
+                    : "เกิดข้อผิดพลาดในการบันทึก"
+            );
+
+        })
+
+        .saveRequest(data);
+
+});
+
+
+/* =========================================================
+   RESET FORM
+========================================================= */
+
+function resetForm() {
+
+    form.reset();
+
+    const productList =
+        document.getElementById("productList");
+
+    productList.innerHTML = "";
+
+    addProduct();
+
+}
+
+
+/* =========================================================
+   ERROR
+========================================================= */
+
+function showError(text) {
+
+    message.textContent = text;
+
+    message.className = "message error";
+
+    window.scrollTo({
+        top: 0,
+        behavior: "smooth"
+    });
+
+}
+
+
+/* =========================================================
+   INITIAL
+========================================================= */
+
+addProduct();
+
+</script>
+
+</body>
+</html>
