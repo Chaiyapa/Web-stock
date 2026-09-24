@@ -1,0 +1,966 @@
+/************************************************************
+ * STOCK MANAGEMENT SYSTEM - MATCHED BACKEND
+ * ใช้ร่วมกับ RequestForm.html เดิม + Web stock1(4).zip
+ * Spreadsheet: 1mlqvS7tmubQNMTcOGV1OS7Xo0uyZvpO4N4gH6YMeBL0
+ *
+ * Request sheets:
+ *   โรงงานบางพลี -> บางพลี
+ *   โรงงานชลบุรี -> ชลบุรี
+ *   โรงงานรังสิต -> รังสิต
+ *
+ * Request columns A:K
+ * A วันที่/เวลา | B เขตโรงงาน | C หน่วยงาน | D ชื่อผู้เบิก
+ * E สินค้าที่ขอเบิก | F ไซร์/ขนาด | G จำนวน | H หมายเหตุ
+ * I สถานะ | J ผู้อนุมัติ | K วันที่ดำเนินการ
+ ************************************************************/
+
+const SPREADSHEET_ID = '1mlqvS7tmubQNMTcOGV1OS7Xo0uyZvpO4N4gH6YMeBL0';
+const TIME_ZONE = 'Asia/Bangkok';
+
+const FACTORIES = {
+  'โรงงานบางพลี': { requestSheet: 'บางพลี', stockSheet: 'Stock_บางพลี', sizeSheet: 'StockSize_บางพลี', movementSheet: 'Movement_บางพลี' },
+  'โรงงานชลบุรี': { requestSheet: 'ชลบุรี', stockSheet: 'Stock_ชลบุรี', sizeSheet: 'StockSize_ชลบุรี', movementSheet: 'Movement_ชลบุรี' },
+  'โรงงานรังสิต': { requestSheet: 'รังสิต', stockSheet: 'Stock_รังสิต', sizeSheet: 'StockSize_รังสิต', movementSheet: 'Movement_รังสิต' }
+};
+
+const REQUEST_HEADERS = [
+  'วันที่/เวลา','เขตโรงงาน','หน่วยงาน','ชื่อผู้เบิก','สินค้าที่ขอเบิก',
+  'ไซร์/ขนาด','จำนวน','หมายเหตุ','สถานะ','ผู้อนุมัติ','วันที่ดำเนินการ'
+];
+
+const STOCK_HEADERS = [
+  'รหัสสินค้า','สินค้า','หมวด','ไซส์/ขนาด','คงเหลือ','ขั้นต่ำ','เปิดให้เบิก','แก้ไขล่าสุด','ผู้แก้ไข'
+];
+
+const SIZE_HEADERS = [
+  'รหัสสินค้า','สินค้า','ไซส์/ขนาด','คงเหลือ','แก้ไขล่าสุด','ผู้แก้ไข'
+];
+
+const MOVEMENT_HEADERS = [
+  'วันที่/เวลา','ประเภท','รหัสสินค้า','สินค้า','ไซส์/ขนาด','จำนวน','ก่อน','หลัง','ผู้ดำเนินการ','หมายเหตุ','แถวใบเบิก','ผู้เบิก'
+];
+
+const DEFAULT_STOCK = [
+  ['UNI-SHORT','เสื้อช็อปแขนสั้น','เสื้อผ้า','S,M,L,XL,2XL,3XL',0,0,true],
+  ['UNI-LONG','เสื้อช็อปแขนยาว','เสื้อผ้า','S,M,L,XL,2XL,3XL',0,0,true],
+  ['UNI-PANTS','กางเกง','เสื้อผ้า','S,M,L,XL,2XL,3XL',0,0,true],
+  ['UNI-SLEEVE','ปลอกแขน','อุปกรณ์','S,M,L,XL,2XL,3XL',0,0,true],
+  ['UNI-HAT','หมวก','อุปกรณ์','ไม่มีไซซ์',0,0,true]
+];
+
+/* ============================== WEB APP / API ============================== */
+function doGet(e) {
+  const p = (e && e.parameter) || {};
+  const action = String(p.action || '').trim();
+  const callback = String(p.callback || '').trim();
+
+  // ไม่มี action = เปิด RequestForm เดิม
+  if (!action) {
+    return HtmlService.createTemplateFromFile('RequestForm')
+      .evaluate()
+      .setTitle('รายการขอเบิก')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
+
+  try {
+    let result;
+    switch (action) {
+      case 'ping':
+        result = { success: true, apiVersion: '7.0.0', message: 'StockFlow API พร้อมใช้งาน' };
+        break;
+      case 'getRequests':
+        result = apiGetRequests_(p);
+        break;
+      case 'addRequest':
+        result = apiAddRequest_(p);
+        break;
+      case 'approve':
+        result = apiSetRequestStatus_(p, 'อนุมัติแล้ว');
+        break;
+      case 'reject':
+        result = apiSetRequestStatus_(p, 'ไม่อนุมัติ');
+        break;
+      case 'getIssues':
+        result = apiGetIssues_(p);
+        break;
+      case 'issue':
+        result = apiIssue_(p);
+        break;
+      case 'getStock':
+        result = apiGetStock_(p);
+        break;
+      case 'saveProduct':
+        result = apiSaveProduct_(p);
+        break;
+      case 'deleteProductSize':
+        result = apiDeleteProductSize_(p);
+        break;
+      case 'receive':
+        result = apiReceive_(p);
+        break;
+      case 'getMovements':
+        result = apiGetMovements_(p);
+        break;
+      case 'clearMovements':
+        result = apiClearMovements_(p);
+        break;
+      case 'setupSystem':
+        result = setupSystem();
+        break;
+      default:
+        throw new Error('ไม่รู้จัก action: ' + action);
+    }
+    return output_(result, callback);
+  } catch (err) {
+    return output_({ success: false, message: err && err.message ? err.message : String(err) }, callback);
+  }
+}
+
+function output_(obj, callback) {
+  const json = JSON.stringify(obj);
+  if (callback) {
+    if (!/^[A-Za-z_$][0-9A-Za-z_$\.]*$/.test(callback)) {
+      return ContentService.createTextOutput(JSON.stringify({ success: false, message: 'callback ไม่ถูกต้อง' }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+    return ContentService.createTextOutput(callback + '(' + json + ');')
+      .setMimeType(ContentService.MimeType.JAVASCRIPT);
+  }
+  return ContentService.createTextOutput(json).setMimeType(ContentService.MimeType.JSON);
+}
+
+/* ============================== REQUEST FORM ============================== */
+// RequestForm.html เดิมเรียก google.script.run.saveRequest(data) โดยตรง
+function saveRequest(data) {
+  try {
+    const clean = normalizeRequestPayload_(data || {});
+    const lock = LockService.getScriptLock();
+    lock.waitLock(15000);
+    try {
+      appendRequestRows_(clean);
+    } finally {
+      lock.releaseLock();
+    }
+    return { success: true, message: 'บันทึกรายการขอเบิกเรียบร้อยแล้ว จำนวน ' + clean.products.length + ' รายการ' };
+  } catch (err) {
+    return { success: false, message: err.message || String(err) };
+  }
+}
+
+function apiAddRequest_(p) {
+  let products = [];
+  try { products = JSON.parse(String(p.products || '[]')); } catch (e) { throw new Error('ข้อมูลสินค้าไม่ถูกต้อง'); }
+  const clean = normalizeRequestPayload_({
+    factory: p.factory,
+    department: p.department,
+    requester: p.requester,
+    products: products,
+    note: p.note
+  });
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try { appendRequestRows_(clean); } finally { lock.releaseLock(); }
+  return { success: true, message: 'บันทึกรายการขอเบิกเรียบร้อยแล้ว', count: clean.products.length };
+}
+
+function normalizeRequestPayload_(data) {
+  const factory = String(data.factory || '').trim();
+  const department = String(data.department || '').trim();
+  const requester = String(data.requester || '').trim();
+  const note = String(data.note || '').trim();
+  let products = Array.isArray(data.products) ? data.products : [];
+
+  getFactoryConfig_(factory); // validate
+  if (!department) throw new Error('กรุณากรอกหน่วยงาน');
+  if (!requester) throw new Error('กรุณากรอกชื่อผู้เบิก');
+
+  products = products.map(function(item) {
+    return {
+      name: String(item.name || '').trim(),
+      size: String(item.size || '').trim(),
+      quantity: Number(item.quantity)
+    };
+  }).filter(function(item) {
+    return item.name && Number.isInteger(item.quantity) && item.quantity > 0;
+  });
+
+  if (!products.length) throw new Error('กรุณาระบุสินค้าและจำนวนอย่างน้อย 1 รายการ');
+  return { factory: factory, department: department, requester: requester, note: note, products: products };
+}
+
+function appendRequestRows_(data) {
+  const cfg = getFactoryConfig_(data.factory);
+  const sheet = getOrCreateRequestSheet_(cfg.requestSheet);
+  const timestamp = new Date();
+  const rows = data.products.map(function(product) {
+    return [
+      timestamp,
+      data.factory,
+      data.department,
+      data.requester,
+      product.name,
+      product.size,
+      product.quantity,
+      data.note,
+      'รอดำเนินการ',
+      '',
+      ''
+    ];
+  });
+  const startRow = sheet.getLastRow() + 1;
+  sheet.getRange(startRow, 1, rows.length, REQUEST_HEADERS.length).setValues(rows);
+  sheet.getRange(startRow, 1, rows.length, 1).setNumberFormat('dd/MM/yyyy HH:mm:ss');
+  sheet.getRange(startRow, 7, rows.length, 1).setNumberFormat('0').setHorizontalAlignment('center');
+  sheet.getRange(startRow, 11, rows.length, 1).setNumberFormat('dd/MM/yyyy HH:mm:ss');
+  sheet.getRange(startRow, 1, rows.length, REQUEST_HEADERS.length).setVerticalAlignment('top');
+  sheet.getRange(startRow, 5, rows.length, 2).setWrap(true);
+  sheet.getRange(startRow, 8, rows.length, 1).setWrap(true);
+}
+
+/* ============================== REQUEST API ============================== */
+function apiGetRequests_(p) {
+  const factory = resolveFactory_(p.factory, p.sheet);
+  const cfg = getFactoryConfig_(factory);
+  const sheet = getOrCreateRequestSheet_(cfg.requestSheet);
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return { success: true, headers: REQUEST_HEADERS, data: [], rowNumbers: [], count: 0 };
+
+  const values = sheet.getRange(2, 1, lastRow - 1, REQUEST_HEADERS.length).getValues();
+  const entries = values.map(function(row, i) {
+    return { rowNumber: i + 2, row: formatRequestRow_(row) };
+  }).reverse();
+
+  return {
+    success: true,
+    headers: REQUEST_HEADERS,
+    data: entries.map(function(x) { return x.row; }),
+    rowNumbers: entries.map(function(x) { return x.rowNumber; }),
+    count: entries.length
+  };
+}
+
+function apiGetIssues_(p) {
+  const factory = resolveFactory_(p.factory, p.sheet);
+  const cfg = getFactoryConfig_(factory);
+  const sheet = getOrCreateRequestSheet_(cfg.requestSheet);
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return { success: true, headers: REQUEST_HEADERS, data: [], rowNumbers: [], count: 0 };
+
+  const values = sheet.getRange(2, 1, lastRow - 1, REQUEST_HEADERS.length).getValues();
+  const entries = [];
+  values.forEach(function(row, i) {
+    if (normalizeRequestStatus_(row[8]) === 'อนุมัติแล้ว') {
+      entries.push({ rowNumber: i + 2, row: formatRequestRow_(row) });
+    }
+  });
+  entries.reverse();
+  return {
+    success: true,
+    headers: REQUEST_HEADERS,
+    data: entries.map(function(x) { return x.row; }),
+    rowNumbers: entries.map(function(x) { return x.rowNumber; }),
+    count: entries.length
+  };
+}
+
+function apiSetRequestStatus_(p, nextStatus) {
+  const factory = resolveFactory_(p.factory, p.sheet);
+  const cfg = getFactoryConfig_(factory);
+  const rowNumber = positiveInt_(p.row, 'เลขแถว');
+  const actor = String(p.actor || 'admin').trim() || 'admin';
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    const sheet = getOrCreateRequestSheet_(cfg.requestSheet);
+    validateRequestRow_(sheet, rowNumber, factory);
+    const current = normalizeRequestStatus_(sheet.getRange(rowNumber, 9).getValue());
+    if (current === 'จ่ายแล้ว') throw new Error('รายการนี้จ่ายสินค้าแล้ว ไม่สามารถเปลี่ยนสถานะได้');
+    if (current === nextStatus) return { success: true, message: 'รายการอยู่ในสถานะนี้แล้ว', rowNumber: rowNumber };
+    if (current !== 'รออนุมัติ') throw new Error('รายการนี้ถูกดำเนินการแล้ว: ' + current);
+
+    sheet.getRange(rowNumber, 9, 1, 3).setValues([[nextStatus, actor, new Date()]]);
+    sheet.getRange(rowNumber, 11).setNumberFormat('dd/MM/yyyy HH:mm:ss');
+    return { success: true, message: nextStatus === 'อนุมัติแล้ว' ? 'อนุมัติเรียบร้อยแล้ว' : 'ไม่อนุมัติเรียบร้อยแล้ว', rowNumber: rowNumber };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function formatRequestRow_(row) {
+  return [
+    formatDate_(row[0]), String(row[1] || ''), String(row[2] || ''), String(row[3] || ''),
+    String(row[4] || ''), String(row[5] || ''), Number(row[6] || 0), String(row[7] || ''),
+    normalizeRequestStatus_(row[8]), String(row[9] || ''), formatDate_(row[10])
+  ];
+}
+
+function normalizeRequestStatus_(value) {
+  const s = String(value || '').trim().toLowerCase();
+  if (['อนุมัติ','อนุมัติแล้ว','approved'].indexOf(s) >= 0) return 'อนุมัติแล้ว';
+  if (['ไม่อนุมัติ','ปฏิเสธ','rejected'].indexOf(s) >= 0) return 'ไม่อนุมัติ';
+  if (['จ่ายแล้ว','issued'].indexOf(s) >= 0) return 'จ่ายแล้ว';
+  return 'รออนุมัติ';
+}
+
+/* ============================== STOCK API ============================== */
+function apiGetStock_(p) {
+  const factory = resolveFactory_(p.factory, p.sheet);
+  const cfg = getFactoryConfig_(factory);
+  const stockSheet = getOrCreateStockSheet_(cfg.stockSheet);
+  const sizeSheet = getOrCreateSizeSheet_(cfg.sizeSheet);
+
+  // ทำ migration อัตโนมัติ: ยอดเดิมที่ยังไม่เคยแยกไซซ์จะอยู่ใน bucket "ไม่ระบุ"
+  syncSizeLedgerWithStock_(stockSheet, sizeSheet, 'system');
+
+  const lastRow = stockSheet.getLastRow();
+  const rows = lastRow < 2 ? [] : stockSheet.getRange(2, 1, lastRow - 1, STOCK_HEADERS.length).getValues().map(function(r) {
+    return [String(r[0] || ''), String(r[1] || ''), String(r[2] || ''), String(r[3] || ''), Number(r[4] || 0), Number(r[5] || 0), toBool_(r[6])];
+  }).filter(function(r) { return r[0] || r[1]; });
+
+  return {
+    success: true,
+    headers: STOCK_HEADERS.slice(0, 7),
+    data: rows,
+    sizeBreakdown: readSizeBreakdown_(sizeSheet),
+    count: rows.length
+  };
+}
+
+function apiSaveProduct_(p) {
+  const factory = resolveFactory_(p.factory, p.sheet);
+  const cfg = getFactoryConfig_(factory);
+  const oldCode = String(p.oldCode || '').trim();
+  const code = String(p.code || '').trim();
+  const name = String(p.name || '').trim();
+  const category = String(p.category || '').trim();
+  const sizes = String(p.sizes || p.size || '').split(',').map(function(x){ return x.trim(); }).filter(Boolean).join(',');
+  const qty = nonNegativeNumber_(p.qty, 'จำนวนคงเหลือ');
+  const min = nonNegativeNumber_(p.min, 'ขั้นต่ำ');
+  const enabled = toBool_(p.enabled);
+  const actor = String(p.actor || 'admin').trim() || 'admin';
+  if (!code) throw new Error('กรุณาระบุรหัสสินค้า');
+  if (!name) throw new Error('กรุณาระบุชื่อสินค้า');
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    const sheet = getOrCreateStockSheet_(cfg.stockSheet);
+    const sizeSheet = getOrCreateSizeSheet_(cfg.sizeSheet);
+    let row = oldCode ? findStockRowByCode_(sheet, oldCode) : 0;
+    const newCodeRow = findStockRowByCode_(sheet, code);
+    if (oldCode && oldCode !== code && newCodeRow && newCodeRow !== row) throw new Error('รหัสสินค้าใหม่นี้มีอยู่แล้ว');
+    if (!row) row = newCodeRow;
+
+    let before = 0;
+    if (row) before = Number(sheet.getRange(row, 5).getValue() || 0);
+
+    if (oldCode && oldCode !== code) renameSizeLedgerCode_(sizeSheet, oldCode, code, name, actor);
+
+    ensureSizeRowsForProduct_(sizeSheet, code, name, sizes || 'ไม่มีไซซ์', actor);
+    setSizeLedgerTotal_(sizeSheet, code, name, qty, actor);
+
+    const values = [[code, name, category, sizes || 'ไม่มีไซซ์', qty, min, enabled, new Date(), actor]];
+    if (row) sheet.getRange(row, 1, 1, STOCK_HEADERS.length).setValues(values);
+    else {
+      row = sheet.getLastRow() + 1;
+      sheet.getRange(row, 1, 1, STOCK_HEADERS.length).setValues(values);
+    }
+
+    if (before !== qty) {
+      appendMovement_(cfg.movementSheet, [new Date(), 'SET', code, name, 'ไม่ระบุ', Math.abs(qty - before), before, qty, actor, 'แก้ไขยอดรวมจากหน้ารายการวัสดุ', '']);
+    }
+    return { success: true, message: 'บันทึกข้อมูลสินค้าเรียบร้อยแล้ว' };
+  } finally { lock.releaseLock(); }
+}
+
+function apiDeleteProductSize_(p) {
+  const factory = resolveFactory_(p.factory, p.sheet);
+  const cfg = getFactoryConfig_(factory);
+  const code = String(p.code || '').trim();
+  const size = String(p.size || '').trim();
+  const actor = String(p.actor || 'admin').trim() || 'admin';
+
+  if (!code) throw new Error('ไม่พบรหัสสินค้า');
+  if (!size) throw new Error('ไม่พบ Size ที่ต้องการลบ');
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    const stockSheet = getOrCreateStockSheet_(cfg.stockSheet);
+    const sizeSheet = getOrCreateSizeSheet_(cfg.sizeSheet);
+    const stockRow = findStockRowByCode_(stockSheet, code);
+    if (!stockRow) throw new Error('ไม่พบสินค้า ' + code);
+
+    const stockData = stockSheet.getRange(stockRow, 1, 1, STOCK_HEADERS.length).getValues()[0];
+    const name = String(stockData[1] || '');
+    const sizesText = String(stockData[3] || 'ไม่มีไซซ์');
+    const totalQty = Number(stockData[4] || 0);
+
+    const sizeRow = findSizeRow_(sizeSheet, code, size);
+    if (!sizeRow) throw new Error('ไม่พบ Size ' + size + ' ของสินค้า ' + code);
+
+    const sizeQty = Number(sizeSheet.getRange(sizeRow, 4).getValue() || 0);
+    if (sizeQty !== 0) {
+      throw new Error('ยังลบไม่ได้ เพราะ Size ' + size + ' มี Stock คงเหลือ ' + sizeQty + ' ตัว กรุณาปรับยอดให้เหลือ 0 ก่อน');
+    }
+
+    const configuredSizes = sizesText.split(',').map(function(x){ return x.trim(); }).filter(Boolean);
+    const sizeLower = size.toLowerCase();
+    const isConfigured = configuredSizes.some(function(x){ return x.toLowerCase() === sizeLower; });
+    const remainingSizes = configuredSizes.filter(function(x){ return x.toLowerCase() !== sizeLower; });
+
+    // Size ที่เป็น ledger พิเศษ เช่น "ไม่ระบุ" ให้ลบเฉพาะแถวนั้น
+    if (!isConfigured) {
+      sizeSheet.deleteRow(sizeRow);
+      appendMovement_(cfg.movementSheet, [new Date(), 'DELETE_SIZE', code, name, size, 0, totalQty, totalQty, actor, 'ลบแถว Size ที่ยอดเป็น 0', '']);
+      return { success: true, message: 'ลบ Size ' + size + ' เรียบร้อยแล้ว', deletedProduct: false };
+    }
+
+    // ถ้ายังมี Size อื่น ให้ลบเฉพาะ Size นี้และปรับ master
+    if (remainingSizes.length > 0) {
+      sizeSheet.deleteRow(sizeRow);
+      stockSheet.getRange(stockRow, 4).setValue(remainingSizes.join(','));
+      stockSheet.getRange(stockRow, 8, 1, 2).setValues([[new Date(), actor]]);
+      appendMovement_(cfg.movementSheet, [new Date(), 'DELETE_SIZE', code, name, size, 0, totalQty, totalQty, actor, 'ลบ Size ที่ยอดเป็น 0', '']);
+      return { success: true, message: 'ลบ Size ' + size + ' เรียบร้อยแล้ว', deletedProduct: false };
+    }
+
+    // Size สุดท้าย: ลบทั้งสินค้าได้ก็ต่อเมื่อ ledger ทุก Size ของสินค้านี้เป็น 0
+    const last = sizeSheet.getLastRow();
+    const rowsToDelete = [];
+    if (last >= 2) {
+      const vals = sizeSheet.getRange(2, 1, last - 1, 4).getValues();
+      vals.forEach(function(r, i) {
+        if (String(r[0] || '').trim().toLowerCase() !== code.toLowerCase()) return;
+        const qty = Number(r[3] || 0);
+        if (qty !== 0) throw new Error('ยังลบสินค้าไม่ได้ เพราะยังมี Stock ใน Size ' + String(r[2] || '') + ' จำนวน ' + qty + ' ตัว');
+        rowsToDelete.push(i + 2);
+      });
+    }
+
+    rowsToDelete.sort(function(a,b){ return b-a; }).forEach(function(row){ sizeSheet.deleteRow(row); });
+    stockSheet.deleteRow(stockRow);
+    appendMovement_(cfg.movementSheet, [new Date(), 'DELETE_PRODUCT', code, name, size, 0, totalQty, 0, actor, 'ลบสินค้าหลัง Stock ทุก Size เป็น 0', '']);
+
+    return { success: true, message: 'ลบสินค้า ' + code + ' เรียบร้อยแล้ว', deletedProduct: true };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function apiReceive_(p) {
+  const factory = resolveFactory_(p.factory, p.sheet);
+  const cfg = getFactoryConfig_(factory);
+  const code = String(p.code || '').trim();
+  const name = String(p.name || '').trim();
+  const size = String(p.size || 'ไม่มีไซซ์').trim() || 'ไม่มีไซซ์';
+  const type = String(p.type || 'IN').trim().toUpperCase();
+  const quantity = positiveInt_(p.quantity, 'จำนวน');
+  const actor = String(p.actor || 'admin').trim() || 'admin';
+  const note = String(p.note || '').trim();
+  if (!code) throw new Error('ไม่พบรหัสสินค้า');
+  if (['IN','ADJUST','ADJUST_OUT'].indexOf(type) < 0) throw new Error('ประเภทการเคลื่อนไหวไม่ถูกต้อง');
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    const stock = getOrCreateStockSheet_(cfg.stockSheet);
+    const sizeSheet = getOrCreateSizeSheet_(cfg.sizeSheet);
+    const row = findStockRowByCode_(stock, code);
+    if (!row) throw new Error('ไม่พบสินค้าใน Stock: ' + code);
+
+    const stockData = stock.getRange(row, 1, 1, STOCK_HEADERS.length).getValues()[0];
+    const actualName = name || String(stockData[1] || '');
+    ensureSizeRowsForProduct_(sizeSheet, code, actualName, String(stockData[3] || 'ไม่มีไซซ์'), actor);
+    syncSizeLedgerWithStock_(stock, sizeSheet, actor);
+
+    const before = Number(stockData[4] || 0);
+    const delta = type === 'ADJUST_OUT' ? -quantity : quantity;
+    const after = before + delta;
+    if (after < 0) throw new Error('Stock ไม่เพียงพอ คงเหลือ ' + before);
+
+    const sizeResult = adjustSizeBalance_(sizeSheet, code, actualName, size, delta, actor);
+
+    stock.getRange(row, 5).setValue(after);
+    stock.getRange(row, 8, 1, 2).setValues([[new Date(), actor]]);
+    appendMovement_(cfg.movementSheet, [new Date(), type, code, actualName, size, quantity, before, after, actor, note, '']);
+    return {
+      success: true,
+      message: 'บันทึกการเคลื่อนไหวเรียบร้อยแล้ว',
+      before: before,
+      after: after,
+      size: size,
+      sizeBefore: sizeResult.before,
+      sizeAfter: sizeResult.after
+    };
+  } finally { lock.releaseLock(); }
+}
+
+function apiIssue_(p) {
+  const factory = resolveFactory_(p.factory, p.sheet);
+  const cfg = getFactoryConfig_(factory);
+  const rowNumber = positiveInt_(p.row, 'เลขแถว');
+  const actor = String(p.actor || 'admin').trim() || 'admin';
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    const reqSheet = getOrCreateRequestSheet_(cfg.requestSheet);
+    validateRequestRow_(reqSheet, rowNumber, factory);
+    const req = reqSheet.getRange(rowNumber, 1, 1, REQUEST_HEADERS.length).getValues()[0];
+    const status = normalizeRequestStatus_(req[8]);
+    if (status === 'จ่ายแล้ว') return { success: true, message: 'รายการนี้จ่ายสินค้าแล้ว', rowNumber: rowNumber };
+    if (status !== 'อนุมัติแล้ว') throw new Error('ต้องอนุมัติรายการก่อนจ่ายสินค้า');
+
+    const requester = String(req[3] || '').trim();
+    const productName = String(req[4] || '').trim();
+    const size = String(req[5] || 'ไม่มีไซซ์').trim() || 'ไม่มีไซซ์';
+    const qty = Number(req[6] || 0);
+    if (!productName || !Number.isInteger(qty) || qty <= 0) throw new Error('ข้อมูลใบเบิกไม่ถูกต้อง');
+
+    const stock = getOrCreateStockSheet_(cfg.stockSheet);
+    const sizeSheet = getOrCreateSizeSheet_(cfg.sizeSheet);
+    const stockRow = findStockRowByNameAndSize_(stock, productName, size);
+    if (!stockRow) throw new Error('ไม่พบสินค้าใน Stock: ' + productName + (size ? ' / ' + size : ''));
+    const stockData = stock.getRange(stockRow, 1, 1, STOCK_HEADERS.length).getValues()[0];
+    if (!toBool_(stockData[6])) throw new Error('สินค้านี้ถูกตั้งเป็นงดการเบิก');
+    const before = Number(stockData[4] || 0);
+    if (before < qty) throw new Error('Stock ไม่เพียงพอ ต้องการ ' + qty + ' แต่คงเหลือ ' + before);
+
+    const code = String(stockData[0] || '');
+    ensureSizeRowsForProduct_(sizeSheet, code, productName, String(stockData[3] || 'ไม่มีไซซ์'), actor);
+    syncSizeLedgerWithStock_(stock, sizeSheet, actor);
+    const sizeResult = adjustSizeBalance_(sizeSheet, code, productName, size, -qty, actor);
+
+    const after = before - qty;
+    stock.getRange(stockRow, 5).setValue(after);
+    stock.getRange(stockRow, 8, 1, 2).setValues([[new Date(), actor]]);
+    reqSheet.getRange(rowNumber, 9, 1, 3).setValues([['จ่ายแล้ว', actor, new Date()]]);
+    reqSheet.getRange(rowNumber, 11).setNumberFormat('dd/MM/yyyy HH:mm:ss');
+    appendMovement_(cfg.movementSheet, [new Date(), 'OUT', code, productName, size, qty, before, after, actor, 'จ่ายตามใบเบิก', rowNumber, requester]);
+
+    return {
+      success: true,
+      message: 'จ่ายสินค้าและตัด Stock เรียบร้อยแล้ว',
+      rowNumber: rowNumber,
+      before: before,
+      after: after,
+      size: size,
+      sizeBefore: sizeResult.before,
+      sizeAfter: sizeResult.after
+    };
+  } finally { lock.releaseLock(); }
+}
+
+function apiGetMovements_(p) {
+  const factory = resolveFactory_(p.factory, p.sheet);
+  const cfg = getFactoryConfig_(factory);
+  const sheet = getOrCreateMovementSheet_(cfg.movementSheet);
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return { success: true, headers: MOVEMENT_HEADERS, data: [], count: 0 };
+
+  let limit = Number(p.limit || 200);
+  if (!Number.isInteger(limit) || limit < 1) limit = 200;
+  limit = Math.min(limit, 500);
+
+  const count = lastRow - 1;
+  const start = Math.max(2, lastRow - limit + 1);
+  const numRows = lastRow - start + 1;
+  const rows = sheet.getRange(start, 1, numRows, MOVEMENT_HEADERS.length).getValues().map(function(r){
+    r[0] = formatDate_(r[0]);
+    return r;
+  }).reverse();
+
+  return { success: true, headers: MOVEMENT_HEADERS, data: rows, count: count, returned: rows.length };
+}
+
+function apiClearMovements_(p) {
+  const factory = resolveFactory_(p.factory, p.sheet);
+  const cfg = getFactoryConfig_(factory);
+  const actor = String(p.actor || 'admin').trim() || 'admin';
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    const sheet = getOrCreateMovementSheet_(cfg.movementSheet);
+    const lastRow = sheet.getLastRow();
+    const deleted = Math.max(0, lastRow - 1);
+    if (deleted > 0) {
+      // ล้างเฉพาะข้อมูล ประวัติเท่านั้น ไม่แตะ Header / Stock / Size ledger
+      sheet.getRange(2, 1, deleted, MOVEMENT_HEADERS.length).clearContent();
+    }
+    return {
+      success: true,
+      message: 'ล้างประวัติการเคลื่อนไหวเรียบร้อยแล้ว',
+      deleted: deleted,
+      actor: actor
+    };
+  } finally { lock.releaseLock(); }
+}
+
+/* ============================== SHEET HELPERS ============================== */
+function getSpreadsheet() {
+  return SpreadsheetApp.openById(SPREADSHEET_ID);
+}
+
+function getFactoryConfig_(factory) {
+  const cfg = FACTORIES[String(factory || '').trim()];
+  if (!cfg) throw new Error('ไม่พบโรงงาน: ' + factory);
+  return cfg;
+}
+
+function resolveFactory_(factory, sheetName) {
+  const f = String(factory || '').trim();
+  if (FACTORIES[f]) return f;
+  const s = String(sheetName || '').trim();
+  const names = Object.keys(FACTORIES);
+  for (let i = 0; i < names.length; i++) {
+    if (FACTORIES[names[i]].requestSheet === s) return names[i];
+  }
+  throw new Error('ไม่พบโรงงาน/ชีตที่ระบุ');
+}
+
+function getOrCreateRequestSheet_(name) {
+  const ss = getSpreadsheet();
+  let sheet = ss.getSheetByName(name);
+  if (!sheet) sheet = ss.insertSheet(name);
+  setupRequestHeader_(sheet);
+  return sheet;
+}
+
+function getOrCreateStockSheet_(name) {
+  const ss = getSpreadsheet();
+  let sheet = ss.getSheetByName(name);
+  if (!sheet) sheet = ss.insertSheet(name);
+  setupGenericHeader_(sheet, STOCK_HEADERS, '#0F766E');
+  if (sheet.getLastRow() < 2) {
+    const now = new Date();
+    const rows = DEFAULT_STOCK.map(function(r) {
+      return [r[0],r[1],r[2],r[3],r[4],r[5],r[6],now,'system'];
+    });
+    sheet.getRange(2, 1, rows.length, STOCK_HEADERS.length).setValues(rows);
+  }
+  return sheet;
+}
+
+function getOrCreateSizeSheet_(name) {
+  const ss = getSpreadsheet();
+  let sheet = ss.getSheetByName(name);
+  if (!sheet) sheet = ss.insertSheet(name);
+  setupGenericHeader_(sheet, SIZE_HEADERS, '#0891B2');
+  return sheet;
+}
+
+function getOrCreateMovementSheet_(name) {
+  const ss = getSpreadsheet();
+  let sheet = ss.getSheetByName(name);
+  if (!sheet) sheet = ss.insertSheet(name);
+  setupGenericHeader_(sheet, MOVEMENT_HEADERS, '#7C3AED');
+  return sheet;
+}
+
+function setupRequestHeader_(sheet) {
+  setupGenericHeader_(sheet, REQUEST_HEADERS, '#2563EB');
+  const widths = [180,180,180,200,300,120,100,260,120,160,180];
+  widths.forEach(function(w, i){ sheet.setColumnWidth(i + 1, w); });
+}
+
+// Compatibility: ชื่อเดิมที่ RequestForm/โค้ดเก่าอาจเรียก
+function setupHeader(sheet) { setupRequestHeader_(sheet); }
+
+function setupGenericHeader_(sheet, headers, color) {
+  const range = sheet.getRange(1, 1, 1, headers.length);
+  const existing = range.getValues()[0];
+  let different = false;
+  for (let i = 0; i < headers.length; i++) if (String(existing[i] || '') !== headers[i]) { different = true; break; }
+  if (different) range.setValues([headers]);
+  range.setFontWeight('bold').setHorizontalAlignment('center').setVerticalAlignment('middle').setBackground(color).setFontColor('#FFFFFF');
+  sheet.setFrozenRows(1);
+}
+
+function validateRequestRow_(sheet, rowNumber, factory) {
+  if (rowNumber < 2 || rowNumber > sheet.getLastRow()) throw new Error('ไม่พบแถวที่ระบุ: ' + rowNumber);
+  const rowFactory = String(sheet.getRange(rowNumber, 2).getValue() || '').trim();
+  if (rowFactory && rowFactory !== factory) throw new Error('แถวนี้ไม่ใช่ข้อมูลของ ' + factory);
+}
+
+function findStockRowByCode_(sheet, code) {
+  const last = sheet.getLastRow();
+  if (last < 2) return 0;
+  const vals = sheet.getRange(2, 1, last - 1, 1).getValues();
+  const target = String(code || '').trim().toLowerCase();
+  for (let i = 0; i < vals.length; i++) if (String(vals[i][0] || '').trim().toLowerCase() === target) return i + 2;
+  return 0;
+}
+
+function findStockRowByNameAndSize_(sheet, name, size) {
+  const last = sheet.getLastRow();
+  if (last < 2) return 0;
+  const vals = sheet.getRange(2, 1, last - 1, 7).getValues();
+  const targetName = String(name || '').trim().toLowerCase();
+  const targetSize = String(size || '').trim().toLowerCase();
+  for (let i = 0; i < vals.length; i++) {
+    if (String(vals[i][1] || '').trim().toLowerCase() !== targetName) continue;
+    if (!targetSize) return i + 2;
+    const sizes = String(vals[i][3] || '').split(',').map(function(x){ return x.trim().toLowerCase(); });
+    if (sizes.indexOf(targetSize) >= 0 || sizes.indexOf('ไม่มีไซซ์') >= 0) return i + 2;
+  }
+  return 0;
+}
+
+function findSizeRow_(sheet, code, size) {
+  const last = sheet.getLastRow();
+  if (last < 2) return 0;
+  const vals = sheet.getRange(2, 1, last - 1, 4).getValues();
+  const c = String(code || '').trim().toLowerCase();
+  const s = String(size || '').trim().toLowerCase();
+  for (let i = 0; i < vals.length; i++) {
+    if (String(vals[i][0] || '').trim().toLowerCase() === c &&
+        String(vals[i][2] || '').trim().toLowerCase() === s) return i + 2;
+  }
+  return 0;
+}
+
+function ensureSizeRow_(sheet, code, name, size, actor) {
+  const cleanSize = String(size || 'ไม่มีไซซ์').trim() || 'ไม่มีไซซ์';
+  let row = findSizeRow_(sheet, code, cleanSize);
+  if (!row) {
+    row = sheet.getLastRow() + 1;
+    sheet.getRange(row, 1, 1, SIZE_HEADERS.length).setValues([[
+      code, name, cleanSize, 0, new Date(), actor || 'system'
+    ]]);
+  } else {
+    sheet.getRange(row, 2).setValue(name);
+  }
+  return row;
+}
+
+function ensureSizeRowsForProduct_(sheet, code, name, sizesText, actor) {
+  let sizes = String(sizesText || 'ไม่มีไซซ์').split(',').map(function(x){ return x.trim(); }).filter(Boolean);
+  if (!sizes.length) sizes = ['ไม่มีไซซ์'];
+  sizes.forEach(function(size){ ensureSizeRow_(sheet, code, name, size, actor); });
+  if (sizes.length > 1 || sizes[0] !== 'ไม่มีไซซ์') ensureSizeRow_(sheet, code, name, 'ไม่ระบุ', actor);
+}
+
+function readSizeBreakdown_(sheet) {
+  const last = sheet.getLastRow();
+  if (last < 2) return [];
+  const vals = sheet.getRange(2, 1, last - 1, SIZE_HEADERS.length).getValues();
+  const grouped = {};
+  vals.forEach(function(r) {
+    const code = String(r[0] || '').trim();
+    if (!code) return;
+    if (!grouped[code]) grouped[code] = {
+      code: code,
+      name: String(r[1] || ''),
+      total: 0,
+      sizes: {}
+    };
+    const size = String(r[2] || 'ไม่มีไซซ์').trim() || 'ไม่มีไซซ์';
+    const qty = Number(r[3] || 0);
+    grouped[code].sizes[size] = qty;
+    grouped[code].total += qty;
+  });
+  return Object.keys(grouped).map(function(code){ return grouped[code]; });
+}
+
+function sizeLedgerTotalsByCode_(sheet) {
+  const out = {};
+  const last = sheet.getLastRow();
+  if (last < 2) return out;
+  const vals = sheet.getRange(2, 1, last - 1, 4).getValues();
+  vals.forEach(function(r) {
+    const code = String(r[0] || '').trim();
+    if (!code) return;
+    const size = String(r[2] || '').trim();
+    const qty = Number(r[3] || 0);
+    if (!out[code]) out[code] = { total: 0, known: 0, unallocated: 0 };
+    out[code].total += qty;
+    if (size === 'ไม่ระบุ') out[code].unallocated += qty;
+    else out[code].known += qty;
+  });
+  return out;
+}
+
+function syncSizeLedgerWithStock_(stockSheet, sizeSheet, actor) {
+  const last = stockSheet.getLastRow();
+  if (last < 2) return;
+  const rows = stockSheet.getRange(2, 1, last - 1, STOCK_HEADERS.length).getValues();
+  const totals = sizeLedgerTotalsByCode_(sizeSheet);
+
+  rows.forEach(function(r) {
+    const code = String(r[0] || '').trim();
+    const name = String(r[1] || '').trim();
+    const sizesText = String(r[3] || 'ไม่มีไซซ์');
+    const total = Number(r[4] || 0);
+    if (!code) return;
+
+    ensureSizeRowsForProduct_(sizeSheet, code, name, sizesText, actor);
+
+    const ledgerTotal = totals[code] ? Number(totals[code].total || 0) : 0;
+    const diff = total - ledgerTotal;
+    if (diff === 0) return;
+
+    const configuredSizes = sizesText.split(',').map(function(x){ return x.trim(); }).filter(Boolean);
+    const bucket = configuredSizes.length === 1 && configuredSizes[0] === 'ไม่มีไซซ์' ? 'ไม่มีไซซ์' : 'ไม่ระบุ';
+    const row = ensureSizeRow_(sizeSheet, code, name, bucket, actor);
+    const current = Number(sizeSheet.getRange(row, 4).getValue() || 0);
+    const next = current + diff;
+
+    if (next >= 0) {
+      sizeSheet.getRange(row, 4, 1, 3).setValues([[next, new Date(), actor || 'system']]);
+      if (!totals[code]) totals[code] = { total: 0, known: 0, unallocated: 0 };
+      totals[code].total = total;
+    }
+  });
+}
+
+function setSizeLedgerTotal_(sheet, code, name, targetTotal, actor) {
+  const last = sheet.getLastRow();
+  let known = 0;
+  let unallocatedRow = 0;
+  let noSizeRow = 0;
+  let specificSizeRows = 0;
+
+  if (last >= 2) {
+    const vals = sheet.getRange(2, 1, last - 1, 4).getValues();
+    vals.forEach(function(r, i) {
+      if (String(r[0] || '').trim() !== code) return;
+      const size = String(r[2] || '').trim();
+      const qty = Number(r[3] || 0);
+      if (size === 'ไม่ระบุ') {
+        unallocatedRow = i + 2;
+      } else {
+        known += qty;
+        if (size === 'ไม่มีไซซ์') noSizeRow = i + 2;
+        else specificSizeRows++;
+      }
+    });
+  }
+
+  // สินค้าที่ไม่มี Size จริง ๆ ให้เก็บยอดตรง "ไม่มีไซซ์" ไม่ใช้ bucket "ไม่ระบุ"
+  if (noSizeRow && specificSizeRows === 0) {
+    sheet.getRange(noSizeRow, 4, 1, 3).setValues([[targetTotal, new Date(), actor]]);
+    if (unallocatedRow) sheet.getRange(unallocatedRow, 4, 1, 3).setValues([[0, new Date(), actor]]);
+    return;
+  }
+
+  if (targetTotal < known) {
+    throw new Error('ยอดรวม ' + targetTotal + ' ต่ำกว่ายอดที่แยกไซซ์ไว้แล้ว ' + known + ' กรุณาปรับลดผ่านเมนู รับเข้า / ปรับ Stock');
+  }
+  if (!unallocatedRow) unallocatedRow = ensureSizeRow_(sheet, code, name, 'ไม่ระบุ', actor);
+  sheet.getRange(unallocatedRow, 4, 1, 3).setValues([[targetTotal - known, new Date(), actor]]);
+}
+
+function renameSizeLedgerCode_(sheet, oldCode, newCode, name, actor) {
+  const last = sheet.getLastRow();
+  if (last < 2) return;
+  const vals = sheet.getRange(2, 1, last - 1, SIZE_HEADERS.length).getValues();
+  let changed = false;
+  vals.forEach(function(r) {
+    if (String(r[0] || '').trim() === oldCode) {
+      r[0] = newCode;
+      r[1] = name;
+      r[4] = new Date();
+      r[5] = actor;
+      changed = true;
+    }
+  });
+  if (changed) sheet.getRange(2, 1, vals.length, SIZE_HEADERS.length).setValues(vals);
+}
+
+function adjustSizeBalance_(sheet, code, name, size, delta, actor) {
+  const targetSize = String(size || 'ไม่มีไซซ์').trim() || 'ไม่มีไซซ์';
+  const row = ensureSizeRow_(sheet, code, name, targetSize, actor);
+  const before = Number(sheet.getRange(row, 4).getValue() || 0);
+
+  if (delta >= 0) {
+    const after = before + delta;
+    sheet.getRange(row, 4, 1, 3).setValues([[after, new Date(), actor]]);
+    return { before: before, after: after };
+  }
+
+  const need = Math.abs(delta);
+  if (before >= need) {
+    const after = before - need;
+    sheet.getRange(row, 4, 1, 3).setValues([[after, new Date(), actor]]);
+    return { before: before, after: after };
+  }
+
+  // ข้อมูลเก่าที่ยังไม่เคยแยกไซซ์: ใช้ bucket "ไม่ระบุ" ชดเชยส่วนที่ขาด
+  const deficit = need - before;
+  const unallocatedRow = findSizeRow_(sheet, code, 'ไม่ระบุ');
+  const unallocated = unallocatedRow ? Number(sheet.getRange(unallocatedRow, 4).getValue() || 0) : 0;
+  if (unallocated < deficit) {
+    throw new Error('Stock Size ' + targetSize + ' ไม่เพียงพอ (มี ' + before + ' และยอดไม่ระบุ ' + unallocated + ')');
+  }
+
+  sheet.getRange(row, 4, 1, 3).setValues([[0, new Date(), actor]]);
+  sheet.getRange(unallocatedRow, 4, 1, 3).setValues([[unallocated - deficit, new Date(), actor]]);
+  return { before: before, after: 0, usedUnallocated: deficit };
+}
+
+function appendMovement_(sheetName, row) {
+  const sheet = getOrCreateMovementSheet_(sheetName);
+  const r = sheet.getLastRow() + 1;
+
+  // รองรับโค้ดเดิมที่ส่ง Movement มา 11 ช่อง และโครงสร้างใหม่ 12 ช่อง
+  const normalizedRow = Array.isArray(row) ? row.slice(0, MOVEMENT_HEADERS.length) : [];
+  while (normalizedRow.length < MOVEMENT_HEADERS.length) normalizedRow.push('');
+
+  sheet.getRange(r, 1, 1, MOVEMENT_HEADERS.length).setValues([normalizedRow]);
+  sheet.getRange(r, 1).setNumberFormat('dd/MM/yyyy HH:mm:ss');
+}
+
+/* ============================== UTILS ============================== */
+function formatDate_(value) {
+  if (value instanceof Date && !isNaN(value.getTime())) return Utilities.formatDate(value, TIME_ZONE, 'dd/MM/yyyy HH:mm:ss');
+  return String(value || '');
+}
+
+function positiveInt_(value, label) {
+  const n = Number(value);
+  if (!Number.isInteger(n) || n <= 0) throw new Error((label || 'ค่า') + ' ต้องเป็นจำนวนเต็มมากกว่า 0');
+  return n;
+}
+
+function nonNegativeNumber_(value, label) {
+  const n = Number(value);
+  if (!isFinite(n) || n < 0) throw new Error((label || 'ค่า') + ' ต้องไม่น้อยกว่า 0');
+  return n;
+}
+
+function toBool_(value) {
+  if (value === true || value === 1) return true;
+  const s = String(value == null ? '' : value).trim().toLowerCase();
+  return ['true','1','yes','y','เปิด','ใช่'].indexOf(s) >= 0;
+}
+
+/* ============================== SETUP ============================== */
+function setupSystem() {
+  Object.keys(FACTORIES).forEach(function(factory) {
+    const cfg = FACTORIES[factory];
+    const requestSheet = getOrCreateRequestSheet_(cfg.requestSheet);
+    const stockSheet = getOrCreateStockSheet_(cfg.stockSheet);
+    const sizeSheet = getOrCreateSizeSheet_(cfg.sizeSheet);
+    getOrCreateMovementSheet_(cfg.movementSheet);
+    syncSizeLedgerWithStock_(stockSheet, sizeSheet, 'system');
+  });
+  return { success: true, message: 'ตรวจสอบ/สร้างชีตระบบเรียบร้อยแล้ว' };
+}
+
+// Compatibility กับฟังก์ชัน setup() เดิม
+function setup() { return setupSystem(); }
+
+// Compatibility กับโค้ดเก่าที่อาจเรียก getRequestData(factory)
+function getRequestData(factory) {
+  const result = apiGetRequests_({ factory: factory });
+  return result.data.map(function(row, i) {
+    return {
+      rowNumber: result.rowNumbers[i],
+      timestamp: row[0], factory: row[1], department: row[2], requester: row[3],
+      product: row[4], size: row[5], quantity: row[6], note: row[7],
+      status: row[8], approver: row[9], processedAt: row[10]
+    };
+  });
+}
