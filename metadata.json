@@ -1,0 +1,6 @@
+{
+  "name": "FORGE STOCK FUTURE X",
+  "description": "ระบบจัดการคลังสินค้ากลางและเครือข่าย 23 โรงงาน เชื่อมต่อ Google Apps Script Web App API (StockFlow)",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
